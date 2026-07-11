@@ -71,6 +71,21 @@ jobs:
 MQTT `username`/`password` are optional; leave them unset for an anonymous
 broker (matching the original script).
 
+### Environment overrides
+
+Any scalar config value can be overridden by an environment variable prefixed
+with `RESTIC_REPORTER_`, with `.` replaced by `_`. This is handy for secrets or
+per-host tweaks without editing the file:
+
+```sh
+RESTIC_REPORTER_MQTT_HOST=10.0.0.9 \
+RESTIC_REPORTER_MQTT_PASSWORD=hunter2 \
+  restic-reporter --config /etc/restic-reporter/config.yaml
+```
+
+Job definitions are file-only (env overrides cover scalars, not the `jobs`
+list).
+
 ## Build
 
 The target host (`gaming-server`) is a `linux/amd64` vSphere VM, which is the
@@ -101,6 +116,16 @@ journalctl -u restic-reporter.service -f
 
 ## Usage
 
+The CLI is built with [cobra](https://github.com/spf13/cobra) /
+[viper](https://github.com/spf13/viper). Invoked with no subcommand it runs the
+backups (the form the systemd unit uses):
+
 ```sh
-restic-reporter --config /etc/restic-reporter/config.yaml
+restic-reporter --config /etc/restic-reporter/config.yaml   # run all jobs
+restic-reporter validate --config config.yaml               # check config, run nothing
+restic-reporter version                                     # print build version
+restic-reporter --help
 ```
+
+`validate` is a fast way to confirm a config parses and passes validation before
+enabling the timer.

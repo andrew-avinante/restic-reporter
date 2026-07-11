@@ -1,12 +1,14 @@
-// Package config loads the restic-reporter YAML configuration that describes
-// each backup job and where to publish its metrics.
+// Package config loads the restic-reporter configuration that describes each
+// backup job and where to publish its metrics. Configuration is read from a
+// YAML file via viper, with optional environment-variable overrides.
 package config
 
 import (
 	"fmt"
-	"os"
+	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
 )
 
 // Config is the top-level configuration loaded from a YAML file.
@@ -53,26 +55,73 @@ type Job struct {
 	Source string `yaml:"source"`
 }
 
-// Load reads, parses, and validates the config at path.
+// envPrefix namespaces environment-variable overrides, e.g.
+// RESTIC_REPORTER_MQTT_HOST overrides mqtt.host.
+const envPrefix = "RESTIC_REPORTER"
+
+// envKeys are the scalar config keys that may be overridden by environment
+// variables. Slice-valued keys (jobs) are intentionally file-only.
+var envKeys = []string{
+	"restic.password_file",
+	"restic.binary",
+	"mqtt.host",
+	"mqtt.port",
+	"mqtt.username",
+	"mqtt.password",
+	"mqtt.discovery_prefix",
+	"mqtt.topic_prefix",
+	"state_dir",
+	"log_file",
+}
+
+// Load reads, parses, and validates the config at path. Environment variables
+// prefixed with RESTIC_REPORTER_ override the matching file values.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
+	v := newViper()
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	return unmarshal(v)
+}
 
-	var c Config
-	if err := yaml.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+// newViper returns a viper preconfigured with defaults and environment binding
+// but no config source attached. Exposed helpers use it so the file and
+// in-memory (test) load paths stay identical.
+func newViper() *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("yaml")
+
+	v.SetDefault("restic.binary", "restic")
+	v.SetDefault("mqtt.port", 1883)
+	v.SetDefault("mqtt.discovery_prefix", "homeassistant")
+
+	v.SetEnvPrefix(envPrefix)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	// AutomaticEnv alone does not surface un-defaulted keys during Unmarshal,
+	// so bind each scalar key explicitly.
+	for _, key := range envKeys {
+		_ = v.BindEnv(key)
 	}
+	return v
+}
 
-	c.applyDefaults()
-	if err := c.validate(); err != nil {
+// unmarshal decodes v into a validated Config using the struct yaml tags.
+func unmarshal(v *viper.Viper) (*Config, error) {
+	var c Config
+	if err := v.Unmarshal(&c, func(dc *mapstructure.DecoderConfig) { dc.TagName = "yaml" }); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	c.ApplyDefaults()
+	if err := c.Validate(); err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
-func (c *Config) applyDefaults() {
+// ApplyDefaults fills any zero-valued fields that have a default. It is
+// idempotent and safe to call even after viper has already applied defaults.
+func (c *Config) ApplyDefaults() {
 	if c.Restic.Binary == "" {
 		c.Restic.Binary = "restic"
 	}
@@ -84,7 +133,8 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-func (c *Config) validate() error {
+// Validate reports the first configuration problem, if any.
+func (c *Config) Validate() error {
 	if c.Restic.PasswordFile == "" {
 		return fmt.Errorf("restic.password_file is required")
 	}
