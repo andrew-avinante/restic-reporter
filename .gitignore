@@ -1,0 +1,12 @@
+# Build output
+/restic-reporter
+/dist/
+*.exe
+
+# Local, host-specific config that may contain broker credentials / paths
+config.yaml
+config.local.yaml
+
+# Never commit secrets
+password
+*.password

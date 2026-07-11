@@ -1,0 +1,32 @@
+# restic-reporter configuration.
+# Copy to config.yaml (or /etc/restic-reporter/config.yaml) and edit.
+
+restic:
+  password_file: /etc/restic/password   # passed to restic --password-file
+  binary: restic                        # optional; defaults to "restic" on PATH
+
+mqtt:
+  host: 192.168.18.131
+  port: 1883
+  # username / password are optional. Leave unset for an anonymous broker
+  # (matches the original restic-backup.sh which published anonymously).
+  # username: ""
+  # password: ""
+  discovery_prefix: homeassistant
+  topic_prefix: restic/gaming-server
+
+# Per-job last-success timestamps are stored here.
+state_dir: /var/lib/restic-backup
+# Diagnostics + restic output. Leave empty to log to stderr only.
+log_file: /tmp/restic-backup.log
+
+jobs:
+  - id: minecraft
+    name: Minecraft
+    repo: sftp:restic-backup@100.64.0.11:/mnt/backups/gaming-server/minecraft
+    source: /opt/game-servers/minecraft/data
+
+  - id: vintage_story
+    name: Vintage Story
+    repo: sftp:restic-backup@100.64.0.11:/mnt/backups/gaming-server/vintage-story
+    source: /opt/game-servers/vintagestory/data

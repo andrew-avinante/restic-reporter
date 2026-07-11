@@ -1,0 +1,11 @@
+[Unit]
+Description=restic-reporter: run restic backups and publish metrics to MQTT
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/restic-reporter --config /etc/restic-reporter/config.yaml
+# Backups are I/O heavy but not urgent; be a good neighbour.
+Nice=10
+IOSchedulingClass=idle
