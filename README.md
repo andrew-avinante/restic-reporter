@@ -19,6 +19,39 @@ or unreachable never blocks or fails a backup, it just means that run isn't repo
 
 ## Install
 
+### One-line installer (recommended)
+
+On a Linux host, this downloads the prebuilt binary, installs the systemd units, and
+runs a short setup wizard that writes `/etc/restic-reporter/config.yaml` and enables
+the daily backup timer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/andrew-avinante/restic-reporter/main/install.sh | sh
+# or, if you prefer wget:
+wget -qO- https://raw.githubusercontent.com/andrew-avinante/restic-reporter/main/install.sh | sh
+```
+
+The wizard prompts for your restic password file, MQTT broker, and one entry per repo
+you want backed up, validates the result, then enables `restic-reporter.timer`. It
+reads from the terminal even when piped, so `curl … | sh` stays interactive. An MQTT
+password you enter is written to a root-only systemd `EnvironmentFile`
+(`/etc/restic-reporter/mqtt.env`), never into `config.yaml`.
+
+Knobs:
+
+| Env var | Effect |
+|---|---|
+| `RESTIC_REPORTER_VERSION` | Pin a release tag, e.g. `v1.2.3` (default: latest). |
+| `RESTIC_REPORTER_NO_SETUP` | Set to `1` to install the binary/units only and skip the wizard. |
+| `RESTIC_REPORTER_BINDIR` | Install dir for the binary (default `/usr/local/bin`). |
+
+Prebuilt binaries are published for `linux/amd64` and `linux/arm64`. On other platforms,
+or if you'd rather not pipe a script to a shell, use `go install` below. The installer
+downloads from GitHub Releases, so it only works once a version has been
+[tagged and released](#releasing).
+
+### go install
+
 ```sh
 go install github.com/andrew-avinante/restic-reporter@latest
 ```
@@ -247,3 +280,30 @@ Project layout:
 - `internal/restic/` — shells out to `restic backup --json` and parses the summary.
 - `internal/mqtt/` — MQTT publishing and Home Assistant discovery payloads.
 - `deploy/` — systemd service + timer units.
+- `install.sh` — the `curl | sh` installer and setup wizard.
+- `.goreleaser.yaml` / `.github/workflows/release.yml` — release build + publish.
+
+## Releasing
+
+Prebuilt binaries (and therefore the one-line installer) come from GitHub Releases,
+built by [GoReleaser](https://goreleaser.com/) on every pushed `v*` tag:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The [`release` workflow](.github/workflows/release.yml) then builds `linux/amd64` and
+`linux/arm64` archives — each bundling the binary, the systemd units, and
+`config.example.yaml` so `install.sh` has everything it needs — plus a `checksums.txt`,
+and attaches them to a `v1.2.3` release. The version is stamped into the binary via
+`-ldflags` and shows up in `restic-reporter version`.
+
+Until the first tag is pushed there are no release assets, so the `curl | sh` one-liner
+will report that it can't find a release; use `go install` in the meantime. Dry-run the
+release locally with:
+
+```sh
+goreleaser check                        # validate .goreleaser.yaml
+goreleaser release --snapshot --clean   # build archives into ./dist without publishing
+```

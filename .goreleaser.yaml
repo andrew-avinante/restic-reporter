@@ -1,0 +1,71 @@
+# goreleaser config for restic-reporter.
+# Produces static linux binaries and tarballs on tag pushes; the archives also
+# bundle the systemd units and example config so install.sh can extract them.
+#
+# Local sanity check (no publish):
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: restic-reporter
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: restic-reporter
+    main: .
+    binary: restic-reporter
+    env:
+      - CGO_ENABLED=0
+    # The wizard is systemd-specific ("one timer, all jobs"), so we only ship
+    # linux binaries. Add other GOOS/GOARCH here if you want bare binaries.
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      # Keep this -X path in sync with cmd/version.go's `version` var.
+      - -s -w -X github.com/andrew-avinante/restic-reporter/cmd.version={{ .Version }}
+
+archives:
+  - id: restic-reporter
+    ids:
+      - restic-reporter
+    # name_template drives the asset filename; install.sh reconstructs this
+    # exactly, so any change here must be mirrored there.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    # Files bundled alongside the binary so a piped installer (no git checkout)
+    # can install the units and seed the example config.
+    files:
+      - README.md
+      - config.example.yaml
+      - deploy/restic-reporter.service
+      - deploy/restic-reporter.timer
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: andrew-avinante
+    name: restic-reporter
+  draft: false
+  prerelease: auto
