@@ -182,15 +182,19 @@ func (p *Publisher) PublishDiscovery(jobID, name string) error {
 	return nil
 }
 
-// PublishState publishes a job's current state to its state topic (not retained,
-// matching restic-backup.sh).
+// PublishState publishes a job's current state to its state topic. The message
+// is retained so the broker holds the last value: backups run at most daily, so
+// without retention a Home Assistant restart (or a fresh entity racing the
+// state that follows its discovery config) leaves the sensors "unavailable"
+// until the next run. Retaining diverges from restic-backup.sh's fire-and-forget
+// mosquitto_pub, but keeps the HA sensors populated between runs.
 func (p *Publisher) PublishState(jobID string, st State) error {
 	topic := fmt.Sprintf("%s/%s/state", p.cfg.TopicPrefix, jobID)
 	payload, err := json.Marshal(st)
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
-	return p.publish(topic, payload, false)
+	return p.publish(topic, payload, true)
 }
 
 func (p *Publisher) publish(topic string, payload []byte, retain bool) error {
